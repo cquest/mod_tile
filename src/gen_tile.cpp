@@ -81,6 +81,8 @@ struct xmlmapconfig {
     char htcphost[PATH_MAX];
     int htcpsock;
     int tilesize;
+    int bleed_x;
+    int bleed_y;
     double scale;
     int minzoom;
     int maxzoom;
@@ -212,17 +214,20 @@ static int check_xyz(int x, int y, int z, struct xmlmapconfig * map) {
 }
 
 #ifdef METATILE
-mapnik::box2d<double> tile2prjbounds(struct projectionconfig * prj, int x, int y, int z) {
+mapnik::box2d<double> tile2prjbounds(struct projectionconfig * prj, int x, int y, int z, struct xmlmapconfig * map) {
 
+    double bleed_x = (double)map->bleed_x / map->tilesize;
+    double bleed_y = (double)map->bleed_y / map->tilesize;
     int render_size_tx = MIN(METATILE, prj->aspect_x * (1 << z));
     int render_size_ty = MIN(METATILE, prj->aspect_y * (1 << z));
 
-    double p0x = prj->bound_x0 + (prj->bound_x1 - prj->bound_x0)* ((double)x / (double)(prj->aspect_x * 1<<z));
-    double p0y = (prj->bound_y1 - (prj->bound_y1 - prj->bound_y0)* (((double)y + render_size_ty) / (double)(prj->aspect_y * 1<<z)));
-    double p1x = prj->bound_x0 + (prj->bound_x1 - prj->bound_x0)* (((double)x + render_size_tx) / (double)(prj->aspect_x * 1<<z));
-    double p1y = (prj->bound_y1 - (prj->bound_y1 - prj->bound_y0)* ((double)y / (double)(prj->aspect_y * 1<<z)));
 
-    syslog(LOG_DEBUG, "Rendering projected coordinates %i %i %i -> %f|%f %f|%f to a %i x %i tile\n", z, x, y, p0x, p0y, p1x, p1y, render_size_tx, render_size_ty);
+    p0x = map->prj->bound_x0 + (map->prj->bound_x1 - map->prj->bound_x0)* (((double)x - bleed_x) / (double)(map->prj->aspect_x * 1<<z));
+    p0y = -1*(map->prj->bound_y0 + (map->prj->bound_y1 - map->prj->bound_y0)* (((double)y + render_size_ty + bleed_y) / (double)(map->prj->aspect_y * 1<<z)));
+    p1x = map->prj->bound_x0 + (map->prj->bound_x1 - map->prj->bound_x0)* (((double)x + render_size_tx + bleed_x) / (double)(map->prj->aspect_x * 1<<z));
+    p1y = -1*(map->prj->bound_y0 + (map->prj->bound_y1 - map->prj->bound_y0)* (((double)y - bleed_y) / (double)(map->prj->aspect_y * 1<<z)));
+
+    syslog(LOG_DEBUG, "Rendering + bleed %i %i %i -> %f|%f %f|%f to a %i x %i tile\n", z, x, y, p0x, p0y, p1x, p1y, render_size_tx, render_size_ty);
 
     mapnik::box2d<double> bbox(p0x, p0y, p1x,p1y);
     return  bbox;
@@ -233,14 +238,15 @@ static enum protoCmd render(struct xmlmapconfig * map, int x, int y, int z, char
     int render_size_tx = MIN(METATILE, map->prj->aspect_x * (1 << z));
     int render_size_ty = MIN(METATILE, map->prj->aspect_y * (1 << z));
 
-    map->map.resize(render_size_tx*map->tilesize, render_size_ty*map->tilesize);
-    map->map.zoom_to_box(tile2prjbounds(map->prj, x, y, z));
+    map->map.resize(render_size_tx * map->tilesize + map->bleed_x * 2, render_size_ty * map->tilesize + map->bleed_y * 2);
+    map->map.zoom_to_box(tile2prjbounds(map->prj, x, y, z, map));
     if (map->map.buffer_size() == 0) { // Only set buffer size if the buffer size isn't explicitly set in the mapnik stylesheet.
         map->map.set_buffer_size((map->tilesize >> 1) * map->scale);
     }
     //m.zoom(size+1);
 
-    mapnik::image_32 buf(render_size_tx*map->tilesize, render_size_ty*map->tilesize);
+    mapnik::image_32 buf(render_size_tx * map->tilesize + map->bleed_x * 2, render_size_ty * map->tilesize + map->bleed_y * 2);
+
     try {
         Map map_parameterized = map->map; 
         if (map->parameterize_function) 
@@ -257,7 +263,7 @@ static enum protoCmd render(struct xmlmapconfig * map, int x, int y, int z, char
     unsigned int xx, yy;
     for (yy = 0; yy < render_size_ty; yy++) {
         for (xx = 0; xx < render_size_tx; xx++) {
-            mapnik::image_view<mapnik::image_data_32> vw(xx * map->tilesize, yy * map->tilesize, map->tilesize, map->tilesize, buf.data());
+            mapnik::image_view<mapnik::image_data_32> vw(xx * map->tilesize + map->bleed_x, yy * map->tilesize + map->bleed_y, map->tilesize, map->tilesize, buf.data());
             tiles.set(xx, yy, save_to_string(vw, "png256"));
         }
     }
@@ -335,6 +341,8 @@ void *render_thread(void * arg)
         maps[iMaxConfigs].maxzoom = parentxmlconfig[iMaxConfigs].max_zoom;
         maps[iMaxConfigs].parameterize_function = init_parameterization_function(parentxmlconfig[iMaxConfigs].parameterization);
 
+		maps[iMaxConfigs].bleed_x = parentxmlconfig[iMaxConfigs].bleed_x;
+		maps[iMaxConfigs].bleed_y = parentxmlconfig[iMaxConfigs].bleed_y;
 
         if (maps[iMaxConfigs].store) {
             maps[iMaxConfigs].ok = 1;
