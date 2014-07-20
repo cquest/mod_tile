@@ -228,14 +228,14 @@ int main(int argc, char **argv)
     
     fprintf(stderr, "Rendering client\n");
 
-    spawn_workers(numThreads, spath, 1000);
+    spawn_workers(numThreads, spath, 1000, 0);
 
     // Render something to counter act the startup costs
     // of obtaining the Postgis table extents
 
     printf("Initial startup costs\n");
     gettimeofday(&start, NULL);
-    enqueue(mapname, 0, 0, 0);
+    enqueue(mapname, 0, 0, 0, 0);
     gettimeofday(&end, NULL);
     display_rate(start, end, 1);
 
@@ -269,7 +269,7 @@ int main(int argc, char **argv)
 
         for (x=xmin; x<=xmax; x++) {
             for (y=ymin; y<=ymax; y++) {
-                enqueue(mapname, x, y, z);
+                enqueue(mapname, x, y, z, 0);
             }
         }
         wait_for_empty_queue();

@@ -39,6 +39,7 @@ static int minZoom = 0;
 static int maxZoom = MAX_ZOOM;
 static int verbose = 0;
 static int maxLoad = MAX_LOAD_OLD;
+static int max_render_time = 0;
 
 int work_complete;
 
@@ -88,6 +89,7 @@ int main(int argc, char **argv)
             {"max-load", 1, 0, 'l'},
             {"tile-dir", 1, 0, 't'},
             {"map", 1, 0, 'm'},
+            {"max-time", 1, 0, 'T'},
             {"verbose", 0, 0, 'v'},
             {"force", 0, 0, 'f'},
             {"all", 0, 0, 'a'},
@@ -95,7 +97,7 @@ int main(int argc, char **argv)
             {0, 0, 0, 0}
         };
 
-        c = getopt_long(argc, argv, "hvaz:Z:x:X:y:Y:s:m:t:n:l:f", long_options, &option_index);
+        c = getopt_long(argc, argv, "hvaz:T:Z:x:X:y:Y:s:m:t:n:l:f", long_options, &option_index);
         if (c == -1)
             break;
 
@@ -149,6 +151,9 @@ int main(int argc, char **argv)
                     return 1;
                 }
                 break;
+            case 'T':   /* -T, --max-time */
+                max_render_time = atoi(optarg);
+                break;
             case 'f':   /* -f, --force */
                 force=1;
                 break;
@@ -166,6 +171,7 @@ int main(int argc, char **argv)
                 fprintf(stderr, "  -t, --tile-dir       tile cache directory (defaults to '" HASH_PATH "')\n");
                 fprintf(stderr, "  -z, --min-zoom=ZOOM  filter input to only render tiles greater or equal to this zoom level (default is 0)\n");
                 fprintf(stderr, "  -Z, --max-zoom=ZOOM  filter input to only render tiles less than or equal to this zoom level (default is %d)\n", MAX_ZOOM);
+                fprintf(stderr, "  -T, --max-time=TIME  also render next zoom level tiles if rendering time is above TIME milliseconds (disabled by default)\n");
                 fprintf(stderr, "If you are using --all, you can restrict the tile range by adding these options:\n");
                 fprintf(stderr, "  -x, --min-x=X        minimum X tile coordinate\n");
                 fprintf(stderr, "  -X, --max-x=X        maximum X tile coordinate\n");
@@ -228,7 +234,7 @@ int main(int argc, char **argv)
 
     gettimeofday(&start, NULL);
 
-    spawn_workers(numThreads, spath, maxLoad);
+    spawn_workers(numThreads, spath, maxLoad, max_render_time);
 
     if (all) {
         int x, y, z;
@@ -241,7 +247,7 @@ int main(int argc, char **argv)
                 for (y=minY; y <= current_maxY; y+=METATILE) {
                     if (!force) s = store->tile_stat(store, mapname, "", x, y, z);
                     if (force || (s.size < 0) || (s.expired)) {
-                        enqueue(mapname, x, y, z);
+                        enqueue(mapname, x, y, z, 0);
                         num_render++;
                     }
                     num_all++;
@@ -280,7 +286,7 @@ int main(int argc, char **argv)
             if (force || (s.size < 0) || (s.expired)) {
                 // missing or old, render it
                 //ret = process_loop(fd, mapname, x, y, z);
-                enqueue(mapname, x, y, z);
+                enqueue(mapname, x, y, z, 0);
                 num_render++;
                 // Attempts to adjust the stats for the QMAX tiles which are likely in the queue
                 if (!(num_render % 10)) {

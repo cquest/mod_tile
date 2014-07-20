@@ -14,7 +14,7 @@
 #include "protocol_helper.h"
 #include "render_config.h"
 
-#define QMAX 32
+#define QMAX 1024
 
 pthread_mutex_t qLock;
 pthread_mutex_t qStatsLock;
@@ -22,6 +22,8 @@ static pthread_cond_t qCondNotEmpty;
 static pthread_cond_t qCondNotFull;
 
 static int maxLoad = 0;
+static int maxZoom = 18;
+static int max_render_time = 0;
 
 static unsigned int qLen;
 struct qItem {
@@ -83,8 +85,9 @@ static int process(struct protocol * cmd, int fd)
 
     if (rsp.cmd != cmdDone)
     {
-        printf("rendering failed with command %i, pausing.\n", rsp.cmd);
-        sleep(10);
+        printf("rendering failed with command %i, pausing (tile %d/%d/%d).\n", rsp.cmd, cmd->z, cmd->x, cmd->y);
+        sleep(1);
+        enqueue(cmd->xmlname, cmd->x, cmd->y, cmd->z, 1);
     } else {
         gettimeofday(&tim, NULL);
         t2 = tim.tv_sec*1000+(tim.tv_usec/1000);
@@ -97,6 +100,13 @@ static int process(struct protocol * cmd, int fd)
         if (performance_stats.stat[cmd->z].time_max < t1)
             performance_stats.stat[cmd->z].time_max = t1;
         pthread_mutex_unlock(&qStatsLock);
+        if (max_render_time>0 && t1>max_render_time && qLen< QMAX && cmd->z < maxZoom) { // more than max_time (ms) for rendering ? let's do the next zoom level
+            printf("tile %d/%d/%d done in %4.3fs, going deeper with qlen=%d\n",cmd->z, cmd->x, cmd->y, t1/1000.0, qLen);
+            enqueue(cmd->xmlname, (cmd->x)*2, (cmd->y)*2, (cmd->z)+1, 1);
+            enqueue(cmd->xmlname, (cmd->x)*2+METATILE, (cmd->y)*2, (cmd->z)+1, 1);
+            enqueue(cmd->xmlname, (cmd->x)*2, (cmd->y)*2+METATILE, (cmd->z)+1, 1);
+            enqueue(cmd->xmlname, (cmd->x)*2+METATILE, (cmd->y)*2+METATILE, (cmd->z)+1, 1);
+        }
     }
 
     if (!ret)
@@ -149,7 +159,7 @@ static struct protocol * fetch(void) {
     return cmd;
 }
 
-void enqueue(const char *xmlname, int x, int y, int z)
+void enqueue(const char *xmlname, int x, int y, int z, int force)
 {
     // Add this path in the local render queue
     struct qItem *e = malloc(sizeof(struct qItem));
@@ -167,7 +177,7 @@ void enqueue(const char *xmlname, int x, int y, int z)
 
     pthread_mutex_lock(&qLock);
 
-    while (qLen == QMAX)
+    while (qLen >= maxLoad*2 && force==0)
     {
         int ret = pthread_cond_wait(&qCondNotFull, &qLock);
         if( ret != 0 ) {
@@ -175,12 +185,24 @@ void enqueue(const char *xmlname, int x, int y, int z)
         }
     }
 
-    // Append item to end of queue
-    if (qTail)
-        qTail->next = e;
+    // enqueue higher zoom at beginning of queue
+    // this ensures we take advantage of cached data
+    if (!qHead || e->z <= qHead->z )
+    {
+        // Append item to end of queue
+        if (qTail)
+            qTail->next = e;
+        else
+            qHead = e;
+        qTail = e;
+    }
     else
+    {
+        // Append item to beginning of queue
+        if (qHead)
+            e->next = qHead;
         qHead = e;
-    qTail = e;
+    }
     qLen++;
     pthread_cond_signal(&qCondNotEmpty);
 
@@ -223,11 +245,12 @@ void *thread_main(void *arg)
     return NULL;
 }
 
-void spawn_workers(int num, const char *spath, int max_load)
+void spawn_workers(int num, const char *spath, int max_load, int maxTime)
 {
     int i;
     no_workers = num;
     maxLoad = max_load;
+	max_render_time = maxTime;
 
     // Setup request queue
     pthread_mutex_init(&qLock, NULL);

@@ -273,7 +273,7 @@ int main(int argc, char **argv)
         || (deleteFrom != -1 && minZoom < deleteFrom)
         || ( touchFrom == -1 && deleteFrom == -1) ) {
         // No need to spawn render threads, when we're not actually going to rerender tiles
-        spawn_workers(numThreads, spath, maxLoad);
+        spawn_workers(numThreads, spath, maxLoad, 0);
         doRender = 1;
     }
 
@@ -361,7 +361,7 @@ int main(int argc, char **argv)
                 else if (doRender)
                 {
                     printf("render: %s\n", store->tile_storage_id(store, mapname, "", x, y, z, name));
-                    enqueue(mapname, x, y, z);
+                    enqueue(mapname, x, y, z, 0);
                     num_render++;
                 }
                 /*

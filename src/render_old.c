@@ -136,7 +136,7 @@ static void descend(const char *tile_dir, const char *search)
             if (planetTime > b.st_mtime) {
                 // request rendering of  old tile
                 path_to_xyz(tile_dir, path, mapname, &x, &y, &z);
-                enqueue(mapname, x, y, z);
+                enqueue(mapname, x, y, z, 0);
             }
         }
     }
@@ -295,7 +295,7 @@ int main(int argc, char **argv)
         exit(7);
     }
 
-    spawn_workers(numThreads, spath, max_load);
+    spawn_workers(numThreads, spath, max_load, 0);
 
     if (map) {
         render_layer(tile_dir, map);
