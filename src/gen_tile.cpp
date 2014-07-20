@@ -222,10 +222,10 @@ mapnik::box2d<double> tile2prjbounds(struct projectionconfig * prj, int x, int y
     int render_size_ty = MIN(METATILE, prj->aspect_y * (1 << z));
 
 
-    p0x = map->prj->bound_x0 + (map->prj->bound_x1 - map->prj->bound_x0)* (((double)x - bleed_x) / (double)(map->prj->aspect_x * 1<<z));
-    p0y = -1*(map->prj->bound_y0 + (map->prj->bound_y1 - map->prj->bound_y0)* (((double)y + render_size_ty + bleed_y) / (double)(map->prj->aspect_y * 1<<z)));
-    p1x = map->prj->bound_x0 + (map->prj->bound_x1 - map->prj->bound_x0)* (((double)x + render_size_tx + bleed_x) / (double)(map->prj->aspect_x * 1<<z));
-    p1y = -1*(map->prj->bound_y0 + (map->prj->bound_y1 - map->prj->bound_y0)* (((double)y - bleed_y) / (double)(map->prj->aspect_y * 1<<z)));
+    double p0x = map->prj->bound_x0 + (map->prj->bound_x1 - map->prj->bound_x0)* (((double)x - bleed_x) / (double)(map->prj->aspect_x * 1<<z));
+    double p0y = -1*(map->prj->bound_y0 + (map->prj->bound_y1 - map->prj->bound_y0)* (((double)y + render_size_ty + bleed_y) / (double)(map->prj->aspect_y * 1<<z)));
+    double p1x = map->prj->bound_x0 + (map->prj->bound_x1 - map->prj->bound_x0)* (((double)x + render_size_tx + bleed_x) / (double)(map->prj->aspect_x * 1<<z));
+    double p1y = -1*(map->prj->bound_y0 + (map->prj->bound_y1 - map->prj->bound_y0)* (((double)y - bleed_y) / (double)(map->prj->aspect_y * 1<<z)));
 
     syslog(LOG_DEBUG, "Rendering + bleed %i %i %i -> %f|%f %f|%f to a %i x %i tile\n", z, x, y, p0x, p0y, p1x, p1y, render_size_tx, render_size_ty);
 
